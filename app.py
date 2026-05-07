@@ -3,64 +3,100 @@ import pickle
 import requests
 import os
 
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
 app = Flask(__name__)
 
-# Load data
+# Load movie data
 movies = pickle.load(open("movies.pkl", "rb"))
-similarity = pickle.load(open("similarity.pkl", "rb"))
+
+# Create vectors from tags
+cv = CountVectorizer(max_features=5000, stop_words='english')
+
+vectors = cv.fit_transform(movies['tags']).toarray()
+
+# Generate similarity matrix
+similarity = cosine_similarity(vectors)
 
 # TMDB API KEY
 API_KEY = "00400f0ba8fc98a9861cb3ce21e0344d"
 
-# Fetch Poster
+
+# Fetch movie poster
 def fetch_poster(movie_name):
+
     url = f"https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}"
+
     data = requests.get(url).json()
 
     try:
         poster_path = data['results'][0]['poster_path']
-        return "https://image.tmdb.org/t/p/w500/" + poster_path
-    except:
-        return ""
 
-# Recommend Function
+        full_path = "https://image.tmdb.org/t/p/w500/" + poster_path
+
+        return full_path
+
+    except:
+        return "https://via.placeholder.com/300x450?text=No+Image"
+
+
+# Recommend movies
 def recommend(movie):
+
     movie = movie.lower()
 
+    # Check if movie exists
     if movie not in movies['title'].str.lower().values:
         return [], []
 
+    # Find movie index
     index = movies[movies['title'].str.lower() == movie].index[0]
+
     distances = similarity[index]
 
+    # Get top 5 similar movies
     movie_list = sorted(
         list(enumerate(distances)),
         reverse=True,
         key=lambda x: x[1]
     )[1:6]
 
-    names = []
-    posters = []
+    recommended_movies = []
+    recommended_posters = []
 
     for i in movie_list:
-        title = movies.iloc[i[0]].title
-        names.append(title)
-        posters.append(fetch_poster(title))
 
-    return names, posters
+        movie_title = movies.iloc[i[0]].title
 
-# Home Page
+        recommended_movies.append(movie_title)
+
+        recommended_posters.append(fetch_poster(movie_title))
+
+    return recommended_movies, recommended_posters
+
+
+# Home page
 @app.route("/")
 def home():
-    return render_template("index.html")
 
-# Recommendation Route
+    return render_template(
+        "index.html",
+        movies=[],
+        posters=[]
+    )
+
+
+# Recommendation route
 @app.route("/recommend", methods=["POST"])
 def recommend_movies():
+
     movie = request.form.get("movie")
 
     if movie:
+
         names, posters = recommend(movie)
+
         return render_template(
             "index.html",
             movies=names,
@@ -73,7 +109,10 @@ def recommend_movies():
         posters=[]
     )
 
-# Run App
+
+# Run app
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 5000))
+
     app.run(host="0.0.0.0", port=port)
