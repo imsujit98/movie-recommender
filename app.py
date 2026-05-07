@@ -11,8 +11,17 @@ app = Flask(__name__)
 # Load movie data
 movies = pickle.load(open("movies.pkl", "rb"))
 
-# Create vectors from tags
-cv = CountVectorizer(max_features=5000, stop_words='english')
+# Reduce dataset size for Render memory optimization
+movies = movies.head(1000)
+
+# Fill missing tags
+movies['tags'] = movies['tags'].fillna('')
+
+# Create vectors
+cv = CountVectorizer(
+    max_features=2000,
+    stop_words='english'
+)
 
 vectors = cv.fit_transform(movies['tags']).toarray()
 
@@ -23,14 +32,15 @@ similarity = cosine_similarity(vectors)
 API_KEY = "00400f0ba8fc98a9861cb3ce21e0344d"
 
 
-# Fetch movie poster
+# Fetch poster function
 def fetch_poster(movie_name):
 
-    url = f"https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}"
-
-    data = requests.get(url).json()
-
     try:
+
+        url = f"https://api.themoviedb.org/3/search/movie?api_key={API_KEY}&query={movie_name}"
+
+        data = requests.get(url).json()
+
         poster_path = data['results'][0]['poster_path']
 
         full_path = "https://image.tmdb.org/t/p/w500/" + poster_path
@@ -38,19 +48,21 @@ def fetch_poster(movie_name):
         return full_path
 
     except:
+
         return "https://via.placeholder.com/300x450?text=No+Image"
 
 
-# Recommend movies
+# Recommendation function
 def recommend(movie):
 
     movie = movie.lower()
 
-    # Check if movie exists
+    # Movie not found
     if movie not in movies['title'].str.lower().values:
+
         return [], []
 
-    # Find movie index
+    # Get movie index
     index = movies[movies['title'].str.lower() == movie].index[0]
 
     distances = similarity[index]
@@ -71,12 +83,14 @@ def recommend(movie):
 
         recommended_movies.append(movie_title)
 
-        recommended_posters.append(fetch_poster(movie_title))
+        poster = fetch_poster(movie_title)
+
+        recommended_posters.append(poster)
 
     return recommended_movies, recommended_posters
 
 
-# Home page
+# Home route
 @app.route("/")
 def home():
 
@@ -87,7 +101,7 @@ def home():
     )
 
 
-# Recommendation route
+# Recommend route
 @app.route("/recommend", methods=["POST"])
 def recommend_movies():
 
@@ -115,4 +129,7 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 5000))
 
-    app.run(host="0.0.0.0", port=port)
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
